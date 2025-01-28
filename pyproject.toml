@@ -1,0 +1,12 @@
+[project]
+name = "mail-cleaner"
+version = "0.1.0"
+description = "Clean Your Gmail Inbox Effortlessly"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "google-api-python-client>=2.157.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.1",
+    "ollama>=0.4.5",
+]

@@ -1,0 +1,9 @@
+# Python-generated files
+/.idea
+
+.venv
+/credentials.json
+/.python-version
+/token.json
+/config.json
+logs/

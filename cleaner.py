@@ -1,4 +1,5 @@
 import base64
+import logging
 import re
 from typing import Dict, Union, List, Optional, Tuple
 
@@ -7,6 +8,12 @@ from googleapiclient.errors import HttpError
 
 from consultant import is_promo
 from providers.gmail import GmailProvider
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.DEBUG
+)
+log = logging.getLogger(__name__)
 
 
 def fetch_emails(gmail: Resource, page_token: Optional[str]) -> Tuple[List[Dict[str, Union[str, List[str]]]], Optional[str]]:
@@ -17,7 +24,7 @@ def fetch_emails(gmail: Resource, page_token: Optional[str]) -> Tuple[List[Dict[
             pageToken=page_token  # Include the page token in the request if there is one
         ).execute()
     except Exception as e:
-        print(f"Failed to fetch emails: {e}")
+        log.debug(f"Failed to fetch emails: {e}")
         return [], None
 
     messages: List[Dict[str, Union[str, List[str]]]] = results.get('messages', [])
@@ -34,18 +41,18 @@ def main():
     while True:
         messages, page_token = fetch_emails(service, page_token)
         total_pages_fetched += 1
-        print(f"Fetched page {total_pages_fetched} of emails, deleted {total_emails_deleted}")
+        log.debug(f"Fetched page {total_pages_fetched} of emails, deleted {total_emails_deleted}")
 
         for message in messages:
             email_data_parsed = parse_email_data(service, message)
             if is_promo(email_data_parsed):
-                print(f'{email_data_parsed["subject"]} is promotional')
+                log.debug(f'{email_data_parsed["subject"]} is promotional')
                 try:
                     service.users().messages().trash(userId='me', id=message['id']).execute()
-                    print(">>>>>>>>>> Message Deleted to trash")
+                    log.debug(">>>>>>>>>> Message Deleted to trash")
                     total_emails_deleted += 1
                 except HttpError as e:
-                    print(f"Failed to delete email: {e}")
+                    log.debug(f"Failed to delete email: {e}")
             else:
                 try:
                     service.users().messages().modify(
@@ -53,7 +60,7 @@ def main():
                         id=message['id'],
                         body={'removeLabelIds': ['UNREAD']}).execute()
                 except HttpError as e:
-                    print(f"Failed to delete email: {e}")
+                    log.debug(f"Failed to delete email: {e}")
         if not page_token:
             break
 
@@ -77,7 +84,7 @@ def parse_email_data(
             format='full'
         ).execute()
     except Exception as e:
-        print(f"Failed to fetch email data: {e}")
+        log.exception(f"Failed to fetch email data: {e}")
         return {}
     try:
         headers = msg['payload']['headers']
@@ -86,7 +93,7 @@ def parse_email_data(
         sender = next(header['value'] for header in headers if header['name'] == 'From')
         cc = next((header['value'] for header in headers if header['name'] == 'Cc'), None)
     except Exception as e:
-        print(f"Failed to parse email data: {e}")
+        log.exception(f"Failed to parse email data: {e}")
         return {}
 
     parts = msg['payload'].get('parts', [])

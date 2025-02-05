@@ -2,6 +2,7 @@
 /.idea
 
 .venv
+.env
 /credentials.json
 /.python-version
 /token.json

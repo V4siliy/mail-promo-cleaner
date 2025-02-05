@@ -1,10 +1,18 @@
-from ollama import chat
-from ollama import ChatResponse
-
-from typing import Dict
+import json
+import os
 import re
 from datetime import datetime
-import json
+from typing import Dict
+
+import anthropic
+from dotenv import load_dotenv
+from ollama import chat
+
+load_dotenv()
+
+API_KEY = os.getenv("ANTHROPIC_API_KEY")
+MODEL = os.getenv("ANTHROPIC_MODEL_NAME")
+MAX_EMAIL_LEN = 3000
 
 
 def extract_answer(text):
@@ -20,6 +28,8 @@ def load_config():
         return json.load(f)
 
 
+client = anthropic.Anthropic(api_key=API_KEY)
+
 config = load_config()
 
 user_first_name = config["user_first_name"]
@@ -29,10 +39,8 @@ HOBBIES = "\n".join([f"{i+1}. {hobby}" for i, hobby in enumerate(config["hobbies
 
 NOT_DELETE = "\n".join([f"{i+1}. {item}" for i, item in enumerate(config["not_delete"])])
 
-MAX_EMAIL_LEN = 3000
 
-
-def is_promo(email_data):
+def is_promo(email_data, local_ollama=False):
 
     system_prompt = f"""You are an AI assistant tasked with managing the mail inbox of a busy individual named 
     {user_first_name} {user_last_name}. 
@@ -122,17 +130,29 @@ def is_promo(email_data):
         )
     }
 
-    response: ChatResponse = chat(model='llama3.1:8b', messages=[
-      system_message,
-      user_message,
-    ])
+    if local_ollama:
+        message = chat(model='llama3.1:8b', messages=[
+          system_message,
+          user_message,
+        ])
+        response = message.message.content
+    else:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=2000,
+            temperature=0.0,
+            system=system_prompt,
+            messages=[user_message]
+        )
+        response = message.content[0].text
+
     current_date = datetime.now().strftime("%d.%m.%Y")
     response_filename = f"logs/{current_date}_response.csv"
 
-    result = extract_answer(response.message.content)
+    result = extract_answer(response)
     with open(response_filename, mode='a', newline='', encoding='utf-8') as f:
         f.write("\n\n============<email>============\n")
         f.write(f"{email_data['from']}, {email_data['subject']} is promotional: {result}")
-        f.write("\n============<response>============\n")
-        f.write(response.message.content)
+        f.write(f"\n============<response: {'local llama' if local_ollama else 'Anthropic'}>============\n")
+        f.write(response)
     return result

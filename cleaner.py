@@ -46,7 +46,7 @@ def main():
         for message in messages:
             email_data_parsed = parse_email_data(service, message)
             if is_promo(email_data_parsed):
-                log.debug(f'{email_data_parsed["subject"]} is promotional')
+                log.info(f'{email_data_parsed["subject"]} is promotional')
                 try:
                     service.users().messages().trash(userId='me', id=message['id']).execute()
                     log.debug(">>>>>>>>>> Message Deleted to trash")
@@ -55,10 +55,11 @@ def main():
                     log.debug(f"Failed to delete email: {e}")
             else:
                 try:
-                    service.users().messages().modify(
-                        userId='me',
-                        id=message['id'],
-                        body={'removeLabelIds': ['UNREAD']}).execute()
+                    log.debug(f"Let's think about another logic")
+                    # service.users().messages().modify(
+                    #     userId='me',
+                    #     id=message['id'],
+                    #     body={'removeLabelIds': ['UNREAD']}).execute()
                 except HttpError as e:
                     log.debug(f"Failed to delete email: {e}")
         if not page_token:

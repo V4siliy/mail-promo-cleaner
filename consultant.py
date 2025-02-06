@@ -3,16 +3,22 @@ import os
 import re
 from datetime import datetime
 from typing import Dict
+import logging 
 
 import anthropic
+from anthropic import HUMAN_PROMPT, AI_PROMPT
 from dotenv import load_dotenv
 from ollama import chat
+import tiktoken
+
 
 load_dotenv()
+log = logging.getLogger(__name__)
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
 MODEL = os.getenv("ANTHROPIC_MODEL_NAME")
 MAX_EMAIL_LEN = 3000
+MAX_TOKENS = 3000
 
 
 def extract_answer(text):
@@ -22,6 +28,9 @@ def extract_answer(text):
         return match.group(1) == 'True'
     return False
 
+def count_tokens(text, model="gpt-3.5-turbo"):
+    encoder = tiktoken.encoding_for_model(model)
+    return len(encoder.encode(text))
 
 def load_config():
     with open('config.json', 'r') as f:
@@ -130,12 +139,29 @@ def is_promo(email_data, local_ollama=False):
         )
     }
 
-    if local_ollama:
+    messages = [
+        {"role": "user", "content": HUMAN_PROMPT + user_message['content']},
+        {"role": "assistant", "content": AI_PROMPT}
+    ]
+
+    response = client.messages.count_tokens(
+        model=MODEL,
+        system=system_prompt,
+        messages=messages
+    )
+    log.debug(response)
+
+    response_data = response.model_dump_json()
+    input_tokens = json.loads(response_data).get("input_tokens")
+    log.info(f'tokens in request: {input_tokens}')
+
+    if input_tokens > MAX_TOKENS:
         message = chat(model='llama3.1:8b', messages=[
           system_message,
           user_message,
         ])
         response = message.message.content
+        output_tokens = count_tokens(response)
     else:
         message = client.messages.create(
             model=MODEL,
@@ -145,7 +171,9 @@ def is_promo(email_data, local_ollama=False):
             messages=[user_message]
         )
         response = message.content[0].text
-
+        output_tokens = message.usage.output_tokens
+    
+    log.info(f'tokens in response: {output_tokens}')
     current_date = datetime.now().strftime("%d.%m.%Y")
     response_filename = f"logs/{current_date}_response.csv"
 
@@ -154,5 +182,6 @@ def is_promo(email_data, local_ollama=False):
         f.write("\n\n============<email>============\n")
         f.write(f"{email_data['from']}, {email_data['subject']} is promotional: {result}")
         f.write(f"\n============<response: {'local llama' if local_ollama else 'Anthropic'}>============\n")
+        f.write(f"\n============<TOKENS in: {input_tokens}, out: {output_tokens}>============\n")
         f.write(response)
     return result

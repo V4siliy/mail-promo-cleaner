@@ -11,4 +11,5 @@ dependencies = [
     "google-auth-oauthlib>=1.2.1",
     "ollama>=0.4.5",
     "python-dotenv>=1.0.1",
+    "tiktoken>=0.8.0",
 ]

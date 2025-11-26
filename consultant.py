@@ -8,6 +8,8 @@ import dspy
 import tiktoken
 from dotenv import load_dotenv
 
+from cache_utils import generate_message_id
+
 load_dotenv()
 log = logging.getLogger(__name__)
 
@@ -196,6 +198,12 @@ def is_promo(email_data: Dict, local_ollama: bool = False) -> bool:
     """
     promo, confidence = classifier.classify_email(email_data)
     
+    # Generate message ID (SHA) for logging
+    sender = email_data.get('from', '')
+    subject = email_data.get('subject', '')
+    internal_date = email_data.get('internalDate', 0)
+    message_id = generate_message_id(sender, subject, internal_date) if internal_date else 'N/A'
+    
     # Log the classification
     current_date = datetime.now().strftime("%d.%m.%Y")
     response_filename = f"logs/{current_date}_response.csv"
@@ -207,12 +215,14 @@ def is_promo(email_data: Dict, local_ollama: bool = False) -> bool:
     
     with open(response_filename, mode='a', newline='', encoding='utf-8') as f:
         f.write("\n\n============<email>============\n")
-        f.write(f"{email_data['from']}, {email_data['subject']}\n")
+        f.write(f"SHA: {message_id}\n")
+        f.write(f"Email: {sender}\n")
+        f.write(f"Subject: {subject}\n")
         f.write(f"Classification: promo={promo}, confidence={confidence:.2f}, threshold={CONFIDENCE_THRESHOLD}\n")
         f.write(f"Final decision: {'PROMOTIONAL' if is_promotional else 'PERSONAL'}\n")
         f.write(f"============<response: DSPy>============\n")
     
-    log.info(f"Email from {email_data['from']} classified as {'PROMOTIONAL' if is_promotional else 'PERSONAL'} "
+    log.info(f"Email SHA={message_id}, email={sender}, subject={subject} classified as {'PROMOTIONAL' if is_promotional else 'PERSONAL'} "
              f"(promo={promo}, confidence={confidence:.2f})")
     
     return is_promotional

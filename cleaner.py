@@ -6,6 +6,12 @@ from typing import Dict, Union, List, Optional, Tuple
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
+from cache_utils import (
+    generate_message_id,
+    get_email_date,
+    is_message_handled,
+    add_to_cache
+)
 from consultant import is_promo
 from providers.gmail import GmailProvider
 
@@ -45,17 +51,39 @@ def main():
 
         for message in messages:
             email_data_parsed = parse_email_data(service, message)
+            
+            # Skip if email data parsing failed
+            if not email_data_parsed or 'internalDate' not in email_data_parsed:
+                log.debug("Skipping message due to parsing failure")
+                continue
+            
+            # Generate message ID and check cache
+            sender = email_data_parsed.get('from', '')
+            subject = email_data_parsed.get('subject', '')
+            internal_date = email_data_parsed.get('internalDate', 0)
+            
+            message_id = generate_message_id(sender, subject, internal_date)
+            email_date = get_email_date(internal_date)
+            
+            # Check if message was already handled
+            if is_message_handled(message_id, email_date):
+                log.info(f"Skipping previously handled message: SHA={message_id[:16]}..., email={sender}, subject={subject}")
+                continue
+            
+            # Process the message
             if is_promo(email_data_parsed):
                 log.info(f'{email_data_parsed["subject"]} is promotional')
                 try:
                     service.users().messages().trash(userId='me', id=message['id']).execute()
                     log.debug(">>>>>>>>>> Message Deleted to trash")
                     total_emails_deleted += 1
+                    # No need to cache deleted promotional messages
                 except HttpError as e:
                     log.debug(f"Failed to delete email: {e}")
             else:
                 try:
-                    log.debug(f"Let's think about another logic")
+                    add_to_cache(message_id, email_date, sender, subject)
+                    log.info(f"Added to cache: SHA={message_id}, email={sender}, subject={subject}")
                     # service.users().messages().modify(
                     #     userId='me',
                     #     id=message['id'],
@@ -107,13 +135,17 @@ def parse_email_data(
     else:
         body = ''
 
-    email_data_parsed: Dict[str, Union[str, List[str]]] = {
+    # Get internalDate (timestamp in milliseconds)
+    internal_date = int(msg.get('internalDate', 0))
+    
+    email_data_parsed: Dict[str, Union[str, List[str], int]] = {
         'subject': subject,
         'to': to,
         'from': sender,
         'cc': cc,
         'labels': msg['labelIds'],
         'body': body,
+        'internalDate': internal_date,
     }
     return email_data_parsed
 

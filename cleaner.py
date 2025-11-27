@@ -1,3 +1,4 @@
+import argparse
 import base64
 import logging
 import re
@@ -38,7 +39,13 @@ def fetch_emails(gmail: Resource, page_token: Optional[str]) -> Tuple[List[Dict[
     return messages, page_token
 
 
-def main():
+def main(stop_on_cache: bool = False):
+    """
+    Main function to process emails.
+    
+    Args:
+        stop_on_cache: If True, stop processing when a cached message is encountered
+    """
     service = GmailProvider().create_service()
     page_token: Optional[str] = None
     total_pages_fetched = 0
@@ -68,6 +75,9 @@ def main():
             # Check if message was already handled
             if is_message_handled(message_id, email_date):
                 log.info(f"Skipping previously handled message: SHA={message_id[:16]}..., email={sender}, subject={subject}")
+                if stop_on_cache:
+                    log.info("Stopping processing: encountered cached message (incremental mode)")
+                    return
                 continue
             
             # Process the message
@@ -151,4 +161,15 @@ def parse_email_data(
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Mail cleaner to filter promotional emails",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--stop-on-cache",
+        action="store_true",
+        help="Stop processing when a cached message is encountered (incremental mode - only handle new messages)"
+    )
+    args = parser.parse_args()
+    
+    main(stop_on_cache=args.stop_on_cache)

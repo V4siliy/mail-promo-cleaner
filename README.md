@@ -9,8 +9,13 @@ It uses the Google Gmail API and advanced analysis logic to evaluate the nature 
 - Analyze whether emails are promotional using DSPy-powered classification with OpenAI models.
 - Class-based email classification with confidence scoring (65% threshold).
 - Token-based email truncation for efficient processing.
+- **Smart caching system** to prevent duplicate processing of personal messages:
+  - Generates unique SHA256 IDs from sender email + subject + datetime
+  - Stores handled personal messages in date-organized cache files
+  - Automatically skips previously processed messages
+- **Incremental processing mode** (`--stop-on-cache` flag) to only handle new messages
 - Ensure personal or important emails, such as those related to hobbies or specific senders, are not filtered out.
-- Automatically move promotional emails to the trash.
+- Automatically move promotional emails to the trash (promotional messages are not cached).
 - Clear logs and analysis stored for transparency in outputs.
 - Configurable email preferences for hobbies and email filtering criteria via `config.json`.
 
@@ -61,7 +66,11 @@ It uses the Google Gmail API and advanced analysis logic to evaluate the nature 
 1. **Run the Script**:
    Execute the script from the command line:
    ```sh
+   # Normal mode: Process all unread emails, skipping previously handled ones
    python cleaner.py
+   
+   # Incremental mode: Stop when encountering first cached message (only process new messages)
+   python cleaner.py --stop-on-cache
    ```
 
 2. **Email Analysis**:
@@ -69,32 +78,50 @@ It uses the Google Gmail API and advanced analysis logic to evaluate the nature 
    - Classification returns both a promotional flag (boolean) and confidence score (0.0-1.0).
    - Emails are considered promotional only if classified as promo AND confidence >= 65%.
    - Promotional emails are trashed (not deleted), while personal or important emails are preserved.
+   - Personal messages are cached to prevent duplicate processing on subsequent runs.
 
-3. **Logs**:
+3. **Caching System**:
+   - Each personal message is assigned a unique SHA256 ID based on sender email + subject + datetime.
+   - Cache files are organized by email date in `data/cache/{email_date}/cache.json`.
+   - Previously handled personal messages are automatically skipped.
+   - Promotional messages are not cached (they're deleted).
+
+4. **Logs**:
    - Email classification results are logged under `logs/` in a CSV file format for verification.
+   - Logs include SHA, email address, and subject for each processed message.
 
 ## Technical Overview
 
 ### Key Components
 - **`fetch_emails(gmail, page_token)`**: Retrieves a list of unread emails using Gmail API.
-- **`parse_email_data(gmail, message_info)`**: Extracts headers and body content from an email.
+- **`parse_email_data(gmail, message_info)`**: Extracts headers, body content, and internal date from an email.
 - **`PromoEmailClassifier`**: Class-based email classifier using DSPy with OpenAI models.
   - Uses `EmailClassification` signature for structured output (promo: bool, confidence: float).
   - Implements token-based truncation for efficient processing.
 - **`is_promo(email_data)`**: Determines if an email is promotional based on classification and 65% confidence threshold.
+- **`cache_utils.py`**: Cache management module for preventing duplicate processing:
+  - `generate_message_id()`: Creates unique SHA256 hash from sender + subject + datetime
+  - `is_message_handled()`: Checks if a message was previously processed
+  - `add_to_cache()`: Stores handled personal messages
+  - Cache files organized by date: `data/cache/{email_date}/cache.json`
 
 ### Folder Structure
 ```plaintext
 .
 ├── cleaner.py          # Main script to handle Gmail email cleaning
 ├── consultant.py       # Handles email analysis logic with DSPy and OpenAI
+├── cache_utils.py      # Cache management for preventing duplicate processing
 ├── providers/
 │   └── gmail.py        # Gmail API provider implementation
 ├── pyproject.toml      # Project metadata and requirements
 ├── config.json         # Configuration file for personalized settings
 ├── README.md           # Documentation file (this file)
 ├── uv.lock             # Dependency lockfile
-├── logs/               # Stores analysis logs
+├── logs/               # Stores analysis logs (format: DD.MM.YYYY_response.csv)
+├── data/
+│   └── cache/          # Cache files organized by email date
+│       └── {email_date}/
+│           └── cache.json  # Stores handled personal messages (SHA, email, subject)
 ├── .env                # Environment variables (OPENAI_API_KEY, etc.)
 └── credentials.json    # Google API credentials (not in repo)
 ```
@@ -118,6 +145,11 @@ Dependencies are managed via `pyproject.toml` and include:
 - **Email Safety**: Always review the filters in `config.json` to avoid accidental deletion of important emails.
 - **Confidence Threshold**: Emails are only classified as promotional if both the classification is `promo=True` AND confidence >= 65%. This conservative approach helps protect important emails.
 - **Token Limits**: Email bodies are automatically truncated based on token count (default: 3000 tokens) to stay within API limits.
+- **Caching Behavior**:
+  - Only personal messages are cached (promotional messages are deleted and not cached).
+  - Cache prevents duplicate processing of personal messages across multiple runs.
+  - Use `--stop-on-cache` flag for incremental processing (stops at first cached message).
+  - Cache files are organized by email date for efficient lookup.
 
 ## Contribution
 
